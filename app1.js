@@ -11,7 +11,7 @@ const excel = require('node-excel-export');
 var async = require('async');
 const sgMail = require('@sendgrid/mail');
 //sendgrid password
-sgMail.setApiKey("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");
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 console.log(moment("2019-06-20"));
 
 function connectSAP(callback) {
