@@ -1,5 +1,6 @@
 const hanaClient = require("@sap/hana-client");
 const connection = hanaClient.createConnection();
+const connection1 = hanaClient.createConnection();
 var mssql = require('mssql');
 var moment = require("moment");
 var fs = require('fs');
@@ -25,14 +26,11 @@ function carData(callback) {
     }
 
     connection.connect(connectionParams, (err) => {
-        console.log(connectionParams);
         if (err) {
             callback(err, null);
             return console.error("Connection error", err);
         }
 
-        // const whereClause = process.argv[2] ? `WHERE "group" = '${process.argv[2]}'` : "";
-        // const sql = `SELECT * FROM food_collection ${whereClause}`;
         const sql = `SELECT * FROM "_SYS_BIC"."ZBS_Retail/CAR_SALES" ('PLACEHOLDER' = ('$$date_to$$', '${reqData.DATE_TO}'), 'PLACEHOLDER' = ('$$date_from$$', '${reqData.DATE_FROM}'));`;
 
         connection.exec(sql, (err, rows) => {
@@ -43,32 +41,23 @@ function carData(callback) {
                 return console.error('SQL execute error:', err);
             }
 
-            // console.log("Results:", rows);
             var jsonfile = JSON.stringify(rows);
             fs.writeFile('car.json', jsonfile, 'utf8', function (err, data) {
 
             });
             callback(null, rows);
-            // console.log(`Query '${sql}' returned ${rows.length} items`);
         });
     });
 }
 
 function posData(config, jsonName, callback) {
-    // //store code 1508
-    // var config = {
-    //     server: '10.91.171.134',
-    //     user: 'sa',
-    //     password: 'retail!123',
-    //     // database: "bestsellers_test"
-    // };
-    // var config1 = {
-    //     server: 'BSR2250',
-    //     user: 'sa',
-    //     password: 'retail!123',
-    //     // database: "bestsellers_test"
-    // };
-    var conn = new mssql.ConnectionPool(config);
+    var connectionStr = {
+        server: config.IP_ADDRESS,
+        user: config.USERNAME,
+        password: config.PASSWORD,
+        // database: "bestsellers_test"
+    }
+    var conn = new mssql.ConnectionPool(connectionStr);
     conn.connect().then(function () {
             var req = new mssql.Request(conn);
             req.query(`use tpcentraldb SELECT lRetailStoreID as site , szDate as pos_date , sum(dTurnover) as pos_sales, sum(dTaQty) as pos_qty  FROM TxSaleLineItem where szDate between ${reqData.DATE_FROM} and ${reqData.DATE_TO} ` +
@@ -231,23 +220,54 @@ async.parallel([
         function (callback) {
             async.waterfall([
                 function (callback) {
-                    var allPos = [{
-                            storeCode: 1508,
-                            server: '10.91.171.134', //1508
-                            user: 'sa',
-                            password: 'retail!123',
-                            // database: "bestsellers_test"
-                        },
-                        {
-                            // server:'10.91.164.104',
-                            storeCode: 1234,
-                            server: '10.91', //1234
-                            user: 'sa',
-                            password: 'retail!123',
-                            // database: "bestsellers_test"
+                    // var allPos = [{
+                    //         storeCode: 1508,
+                    //         server: '10.91.171.134', //1508
+                    //         user: 'sa',
+                    //         password: 'retail!123',
+                    //         // database: "bestsellers_test"
+                    //     },
+                    //     {
+                    //         // server:'10.91.164.104',
+                    //         storeCode: 1234,
+                    //         server: '10.91', //1234
+                    //         user: 'sa',
+                    //         password: 'retail!123',
+                    //         // database: "bestsellers_test"
+                    //     }
+                    // ]
+                    const connectionParams1 = {
+                        host: "10.91.4.50",
+                        port: 30015,
+                        uid: "SUPPORT",
+                        pwd: "Best1234 ", // space is there 
+                        databaseName: "BP1"
+                    }
+
+                    connection1.connect(connectionParams1, (err) => {
+                        if (err) {
+                            callback(err, null);
+                            return console.error("Connection error", err);
                         }
-                    ]
-                    callback(null, allPos);
+
+                        const sql1 = `select * from "SAPCP1"."ZSTORE_INFO"`;
+
+                        connection1.exec(sql1, (err, allPos) => {
+                            connection.disconnect();
+
+                            if (err) {
+                                callback(err, null);
+                                return console.error('SQL execute error:', err);
+                            }
+
+                            var jsonfile = JSON.stringify(allPos);
+                            fs.writeFile('allpos.json', jsonfile, 'utf8', function (err, data) {
+
+                            });
+                            callback(null, allPos);
+                        });
+                    });
+
                 },
                 function (allPos, callback) {
                     async.concatLimit(allPos, 1, function (pos, callback) {
@@ -257,17 +277,17 @@ async.parallel([
                             if (err) {
                                 if (pos.count < 3) {
                                     console.log("count :", pos.count);
-                                    posData(pos, pos.server.replace(/\./g, "_"), posCallback);
+                                    posData(pos, pos.IP_ADDRESS.replace(/\./g, "_"), posCallback);
                                 } else {
                                     console.log("in err");
                                     callback(null, {
-                                        site: pos.storeCode,
+                                        site: pos.SITE,
                                         pos_date: reqData.DATE_FROM,
                                         pos_sales: 0,
                                         pos_qty: 0,
                                         connectionStatus: 'Failed'
                                     }, {
-                                        site: pos.storeCode,
+                                        site: pos.SITE,
                                         pos_date: reqData.DATE_TO,
                                         pos_sales: 0,
                                         pos_qty: 0,
@@ -279,7 +299,7 @@ async.parallel([
                                 callback(null, data);
                             }
                         };
-                        posData(pos, pos.server.replace(/\./g, "_"), posCallback);
+                        posData(pos, pos.IP_ADDRESS.replace(/\./g, "_"), posCallback);
 
                     }, callback)
                 }
@@ -290,13 +310,13 @@ async.parallel([
         // if (err)
         //     return true;
 
-        console.log("count of car : ", results[0].length);
-        console.log("count of pos : ", results[1]);
+        // console.log("count of car : ", results[0]);
+        // console.log("count of pos : ", results[1]);
 
         _.forEach(results[0], function (car) {
             _.forEach(results[1], function (pos) {
                 var pos_date = pos.pos_date.slice(0, 4) + "-" + pos.pos_date.slice(4, 6) + "-" + pos.pos_date.slice(6, 8);
-                if (pos.site == 1234 && car.site == "1234" && car.sales_date == 20190711)
+                if (pos.SITE == 1234 && car.site == "1234" && car.sales_date == 20190711)
                     console.log('i found you', pos_date, car.sales_date);
                 if (car.site.toString() === pos.site.toString() &&
                     new Date(car.sales_date).setHours(0, 0, 0, 0) === new Date(pos_date).setHours(0, 0, 0, 0)
